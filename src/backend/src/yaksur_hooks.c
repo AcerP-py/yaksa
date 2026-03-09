@@ -3,6 +3,9 @@
  *     See COPYRIGHT in top-level directory
  */
 
+#define _POSIX_C_SOURCE 200809L
+#define _DEFAULT_SOURCE
+
 #include <stdlib.h>
 #include <assert.h>
 #include <string.h>
@@ -32,27 +35,32 @@ static int is_backend_disabled(const char *backend_name)
 
     int is_disabled = 0;
     char *saveptr = NULL;
-    for (char *token = strtok_r(backends_copy, ",", &saveptr);
-         token != NULL;
-         token = strtok_r(NULL, ",", &saveptr)) {
 
+    char *token = strtok_r(backends_copy, ",", &saveptr);
+    while (token) {
+        // Trim leading whitespace
         while (*token && isspace((unsigned char)*token)) {
             token++;
         }
 
         if (*token == '\0') {
+            token = strtok_r(NULL, ",", &saveptr);
             continue;
         }
 
+        // Trim trailing whitespace
         char *end = token + strlen(token) - 1;
         while (end > token && isspace((unsigned char)*end)) {
             *end-- = '\0';
         }
 
+        // Case-insensitive comparison
         if (strcasecmp(token, backend_name) == 0) {
             is_disabled = 1;
             break;
         }
+
+        token = strtok_r(NULL, ",", &saveptr);
     }
 
     free(backends_copy);
