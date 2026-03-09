@@ -5,12 +5,59 @@
 
 #include <stdlib.h>
 #include <assert.h>
+#include <string.h>
+#include <ctype.h>
 #include "yaksa.h"
 #include "yaksi.h"
 #include "yaksu.h"
 #include "yaksuri.h"
 
 yaksuri_global_s yaksuri_global;
+
+static int is_backend_disabled(const char *backend_name)
+{
+    if (!backend_name || !*backend_name) {
+        return 0;
+    }
+
+    const char *disabled_backends = getenv("YAKSA_DISABLE_BACKENDS");
+    if (!disabled_backends || disabled_backends[0] == '\0') {
+        return 0;
+    }
+
+    char *backends_copy = strdup(disabled_backends);
+    if (!backends_copy) {
+        return 0;
+    }
+
+    int is_disabled = 0;
+    char *saveptr = NULL;
+    for (char *token = strtok_r(backends_copy, ",", &saveptr);
+         token != NULL;
+         token = strtok_r(NULL, ",", &saveptr)) {
+
+        while (*token && isspace((unsigned char)*token)) {
+            token++;
+        }
+
+        if (*token == '\0') {
+            continue;
+        }
+
+        char *end = token + strlen(token) - 1;
+        while (end > token && isspace((unsigned char)*end)) {
+            *end-- = '\0';
+        }
+
+        if (strcasecmp(token, backend_name) == 0) {
+            is_disabled = 1;
+            break;
+        }
+    }
+
+    free(backends_copy);
+    return is_disabled;
+}
 
 static void *malloc_fn(uintptr_t size, void *state)
 {
@@ -83,22 +130,30 @@ int yaksur_init_hook(yaksi_info_s * info)
     }
 
     /* CUDA hooks */
-    id = YAKSURI_GPUDRIVER_ID__CUDA;
-    yaksuri_global.gpudriver[id].hooks = NULL;
-    rc = yaksuri_cuda_init_hook(&yaksuri_global.gpudriver[id].hooks);
-    YAKSU_ERR_CHECK(rc, fn_fail);
+    if (!is_backend_disabled("CUDA")) {
+        id = YAKSURI_GPUDRIVER_ID__CUDA;
+        yaksuri_global.gpudriver[id].hooks = NULL;
+        rc = yaksuri_cuda_init_hook(&yaksuri_global.gpudriver[id].hooks);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    }
 
     /* ZE hooks */
-    id = YAKSURI_GPUDRIVER_ID__ZE;
-    yaksuri_global.gpudriver[id].hooks = NULL;
-    rc = yaksuri_ze_init_hook(&yaksuri_global.gpudriver[id].hooks);
-    YAKSU_ERR_CHECK(rc, fn_fail);
+    if (!is_backend_disabled("ZE")) {
+        id = YAKSURI_GPUDRIVER_ID__ZE;
+        yaksuri_global.gpudriver[id].hooks = NULL;
+        rc = yaksuri_ze_init_hook(&yaksuri_global.gpudriver[id].hooks);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    }
 
     /* HIP hooks */
-    id = YAKSURI_GPUDRIVER_ID__HIP;
-    yaksuri_global.gpudriver[id].hooks = NULL;
-    rc = yaksuri_hip_init_hook(&yaksuri_global.gpudriver[id].hooks);
-    YAKSU_ERR_CHECK(rc, fn_fail);
+    if (!is_backend_disabled("HIP")) {
+        id = YAKSURI_GPUDRIVER_ID__HIP;
+        yaksuri_global.gpudriver[id].hooks = NULL;
+        rc = yaksuri_hip_init_hook(&yaksuri_global.gpudriver[id].hooks);
+        YAKSU_ERR_CHECK(rc, fn_fail);
+    }
+
+
     /* final setup for all drivers */
     for (id = YAKSURI_GPUDRIVER_ID__UNSET; id < YAKSURI_GPUDRIVER_ID__LAST; id++) {
         if (id == YAKSURI_GPUDRIVER_ID__UNSET || yaksuri_global.gpudriver[id].hooks == NULL)
